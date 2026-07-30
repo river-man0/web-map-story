@@ -4,6 +4,8 @@ An interactive Arctic web map built with [OpenLayers](https://openlayers.org/), 
 in **EPSG:3573** ("WGS 84 / North Pole LAEA Canada") — a Lambert Azimuthal Equal-Area
 projection centred on the North Pole.
 
+**Live site:** https://river-man0.github.io/web-map-story/
+
 ## Features
 
 - **EPSG:3573 projection** — the basemap, served natively in unprojected EPSG:4326, is
