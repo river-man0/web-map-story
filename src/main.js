@@ -4,7 +4,8 @@ import './style.css';
 import Map from 'ol/Map';
 import View from 'ol/View';
 import TileLayer from 'ol/layer/Tile';
-import XYZ from 'ol/source/XYZ';
+import WMTS from 'ol/source/WMTS';
+import WMTSTileGrid from 'ol/tilegrid/WMTS';
 import Graticule from 'ol/layer/Graticule';
 import Stroke from 'ol/style/Stroke';
 import { defaults as defaultControls, ScaleLine } from 'ol/control';
@@ -31,22 +32,42 @@ projection3573.setExtent([-HALF_EXTENT, -HALF_EXTENT, HALF_EXTENT, HALF_EXTENT])
 projection3573.setWorldExtent([-180, 45, 180, 90]);
 
 // Fixed resolution ladder (metres/pixel) so tiling stays predictable while
-// the basemap is reprojected on the fly from EPSG:3857 into EPSG:3573.
-const RESOLUTIONS = [16384, 8192, 4096, 2048, 1024, 512, 256, 128, 64, 32, 16, 8];
+// the basemap is reprojected on the fly into EPSG:3573. Capped at 128 m/px,
+// close to the basemap's native ~500 m resolution, to avoid zooming into blur.
+const RESOLUTIONS = [16384, 8192, 4096, 2048, 1024, 512, 256, 128];
 
 // ---------------------------------------------------------------------------
-// Basemap - CARTO "Dark Matter", a free public XYZ endpoint built on
-// OpenStreetMap data. No API key required.
+// Basemap - NASA GIBS "VIIRS_CityLights_2012" (Black Marble), a free public
+// WMTS endpoint served natively in unprojected EPSG:4326. No API key
+// required. Unlike Web-Mercator-based basemaps (EPSG:3857), which are
+// mathematically undefined above ~85 deg latitude and leave a hole at the
+// pole, this geographic source has genuine pole-to-pole coverage.
 // ---------------------------------------------------------------------------
+const GIBS_RESOLUTIONS = [
+  0.3515625, 0.234375, 0.140625, 0.0703125, 0.03515625, 0.017578125, 0.0087890625, 0.00439453125,
+];
+const GIBS_MATRIX_IDS = GIBS_RESOLUTIONS.map((_, i) => String(i));
+
 const basemap = new TileLayer({
-  source: new XYZ({
-    url: 'https://{a-d}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+  source: new WMTS({
+    url: 'https://gibs.earthdata.nasa.gov/wmts/epsg4326/best/VIIRS_CityLights_2012/default/500m/{TileMatrix}/{TileRow}/{TileCol}.jpeg',
+    layer: 'VIIRS_CityLights_2012',
+    matrixSet: '500m',
+    format: 'image/jpeg',
+    projection: 'EPSG:4326',
+    requestEncoding: 'REST',
+    style: 'default',
+    tileGrid: new WMTSTileGrid({
+      origin: [-180, 90],
+      resolutions: GIBS_RESOLUTIONS,
+      matrixIds: GIBS_MATRIX_IDS,
+      tileSize: 512,
+    }),
     attributions: [
-      '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
-      '&copy; <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>',
+      'Imagery: NASA <a href="https://earthdata.nasa.gov/gibs" target="_blank" rel="noopener">GIBS</a> / Suomi NPP VIIRS "Black Marble"',
     ],
-    maxZoom: 19,
     crossOrigin: 'anonymous',
+    wrapX: true,
   }),
 });
 
