@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#0a0e14" />
+    <meta name="color-scheme" content="dark" />
+    <title>Arctic Web Map &middot; EPSG:3573</title>
+    <meta
+      name="description"
+      content="An interactive Arctic web map rendered in the EPSG:3573 (WGS 84 / North Pole LAEA Canada) projection, built with OpenLayers."
+    />
+  </head>
+  <body>
+    <div id="app">
+      <header class="app-header">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <div class="brand-text">
+            <h1>Arctic Web Map</h1>
+            <p>EPSG:3573 &middot; North Pole LAEA Canada</p>
+          </div>
+        </div>
+        <button id="reset-view" class="btn-reset" type="button" aria-label="Reset view to the North Pole">
+          <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" focusable="false">
+            <path
+              fill="currentColor"
+              d="M10 3a7 7 0 1 0 6.32 4.02.75.75 0 0 1 1.36-.63A8.5 8.5 0 1 1 10 1.5v-1a.5.5 0 0 1 .82-.38l2.5 2.13a.5.5 0 0 1 0 .76l-2.5 2.13A.5.5 0 0 1 10 5V3Z"
+            />
+          </svg>
+          <span>Reset view</span>
+        </button>
+      </header>
+
+      <main class="map-shell">
+        <div id="map" class="map"></div>
+
+        <div class="panel panel-coords" id="coord-readout" aria-live="polite">
+          <div class="panel-row">
+            <span class="panel-label">Lat</span>
+            <span class="panel-value" id="coord-lat">&mdash;</span>
+          </div>
+          <div class="panel-row">
+            <span class="panel-label">Lon</span>
+            <span class="panel-value" id="coord-lon">&mdash;</span>
+          </div>
+        </div>
+
+        <div class="panel panel-hint" id="hint">Hover or tap the map for coordinates</div>
+      </main>
+
+      <footer class="app-footer">
+        <span
+          >Basemap &copy;
+          <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer"
+            >OpenStreetMap</a
+          >
+          contributors, &copy;
+          <a href="https://carto.com/attributions" target="_blank" rel="noopener noreferrer">CARTO</a></span
+        >
+        <span
+          >Built with
+          <a href="https://openlayers.org/" target="_blank" rel="noopener noreferrer">OpenLayers</a></span
+        >
+      </footer>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

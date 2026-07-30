@@ -1,0 +1,391 @@
+:root {
+  color-scheme: dark;
+
+  --bg: #0a0e14;
+  --surface: #11161f;
+  --surface-alt: #151b26;
+  --panel-bg: rgba(17, 22, 31, 0.88);
+  --border: rgba(148, 163, 184, 0.16);
+  --border-strong: rgba(148, 163, 184, 0.28);
+  --text: #e6edf3;
+  --text-muted: #8b98a9;
+  --accent: #6bc9ff;
+  --accent-strong: #3fa9f5;
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'SFMono-Regular', ui-monospace, Menlo, Consolas, monospace;
+
+  --header-h: 60px;
+  --footer-h: 34px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Header                                                                  */
+/* ---------------------------------------------------------------------- */
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: var(--header-h);
+  padding: 0 16px;
+  padding-top: env(safe-area-inset-top);
+  background: linear-gradient(180deg, var(--surface) 0%, var(--bg) 100%);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  z-index: 10;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.brand-mark {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at 32% 28%, #eaf6ff 0%, var(--accent) 38%, var(--accent-strong) 70%, #0d3a5c 100%);
+  box-shadow: 0 0 0 1px var(--border-strong), 0 0 14px rgba(107, 201, 255, 0.35);
+}
+
+.brand-text {
+  min-width: 0;
+}
+
+.brand-text h1 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.brand-text p {
+  margin: 1px 0 0;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.btn-reset {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-alt);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+
+.btn-reset:hover {
+  background: #1b2330;
+  border-color: var(--accent);
+}
+
+.btn-reset:active {
+  transform: scale(0.96);
+}
+
+.btn-reset svg {
+  color: var(--accent);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Map                                                                     */
+/* ---------------------------------------------------------------------- */
+
+.map-shell {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.map {
+  position: absolute;
+  inset: 0;
+  background: var(--bg);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Floating panels                                                         */
+/* ---------------------------------------------------------------------- */
+
+.panel {
+  position: absolute;
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  color: var(--text);
+  font-size: 12px;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.panel-coords {
+  right: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+.panel-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.panel-label {
+  color: var(--text-muted);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  width: 26px;
+}
+
+.panel-value {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--accent);
+  min-width: 92px;
+  text-align: right;
+}
+
+.panel-hint {
+  left: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  padding: 7px 11px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Footer                                                                   */
+/* ---------------------------------------------------------------------- */
+
+.app-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: var(--footer-h);
+  padding: 0 16px;
+  padding-bottom: env(safe-area-inset-bottom);
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  font-size: 10.5px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.app-footer a {
+  color: var(--text-muted);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(139, 152, 169, 0.4);
+}
+
+.app-footer a:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ---------------------------------------------------------------------- */
+/* OpenLayers control overrides - dark theme + touch-friendly sizing       */
+/* ---------------------------------------------------------------------- */
+
+.ol-control {
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  padding: 3px;
+}
+
+.ol-control button {
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-sans);
+  border-radius: 7px;
+  width: 32px;
+  height: 32px;
+  font-size: 16px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.ol-control button:hover,
+.ol-control button:focus {
+  background: var(--accent-strong);
+  color: #06131f;
+}
+
+.ol-zoom {
+  top: calc(12px + env(safe-area-inset-top));
+  left: 12px;
+}
+
+.ol-zoom button {
+  margin: 2px;
+}
+
+.ol-attribution {
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  right: 12px;
+  max-width: 60vw;
+}
+
+.ol-attribution:not(.ol-collapsed) {
+  background: var(--panel-bg);
+}
+
+.ol-attribution ul {
+  color: var(--text-muted);
+  font-size: 10.5px;
+  text-shadow: none;
+}
+
+.ol-attribution a {
+  color: var(--text-muted);
+}
+
+.ol-attribution button {
+  width: 24px;
+  height: 24px;
+}
+
+/* Scale line */
+
+.ol-scale-line {
+  position: absolute;
+  left: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 4px 10px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+.ol-scale-line-inner {
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  border-color: var(--accent);
+  border-width: 0 2px 2px 2px;
+}
+
+/* When both the hint/coords panel and the scale line share the bottom-left
+   corner, push the scale line up on wider layouts. */
+@media (min-width: 641px) {
+  .ol-scale-line {
+    left: 12px;
+    bottom: calc(52px + env(safe-area-inset-bottom));
+  }
+}
+
+/* Graticule labels */
+
+.ol-graticule-label {
+  color: var(--text-muted) !important;
+  font-family: var(--font-mono) !important;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Mobile refinements                                                      */
+/* ---------------------------------------------------------------------- */
+
+@media (max-width: 640px) {
+  :root {
+    --header-h: 52px;
+  }
+
+  .brand-text p {
+    display: none;
+  }
+
+  .btn-reset span {
+    display: none;
+  }
+
+  .btn-reset {
+    padding: 8px;
+  }
+
+  .panel-coords {
+    right: 8px;
+    bottom: calc(8px + env(safe-area-inset-bottom));
+    padding: 6px 10px;
+  }
+
+  .panel-hint {
+    left: 8px;
+    bottom: calc(8px + env(safe-area-inset-bottom));
+    max-width: 42vw;
+  }
+
+  .ol-scale-line {
+    left: 8px;
+    bottom: calc(48px + env(safe-area-inset-bottom));
+  }
+
+  .ol-zoom {
+    left: 8px;
+    top: calc(8px + env(safe-area-inset-top));
+  }
+
+  .app-footer {
+    font-size: 9.5px;
+    padding: 0 10px;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
