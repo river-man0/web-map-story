@@ -21,19 +21,23 @@ projection centred on the North Pole.
 - **Dynamic scale bar** that updates automatically as you pan and zoom.
 - **Mobile-friendly layout** with touch-sized controls and safe-area-aware spacing.
 - Basemap tiles from **NASA GIBS** (public, free WMTS endpoint) — no API key required.
-- **Live AIS vessel traffic**, streamed from [aisstream.io](https://aisstream.io), filtered
-  to Canada's coastline and Arctic waters (Pacific coast, Great Lakes/St. Lawrence,
-  Atlantic Canada, Hudson Bay, and the Arctic archipelago up to the pole). Vessels with a
-  valid heading/course are drawn as rotated arrows — correctly oriented for a polar
-  azimuthal projection, where "true north" at a given point is the direction back toward
-  the pole, not "up" on screen. Tap a vessel for its MMSI, status, speed, and course; tap
-  the "AIS" badge in the header to fly to the current traffic.
+- **Live AIS vessel traffic**, streamed from [aisstream.io](https://aisstream.io), across
+  two bounding boxes: Canada's coastline and Arctic waters (Pacific coast, Great
+  Lakes/St. Lawrence, Atlantic Canada, Hudson Bay, and the Arctic archipelago up to the
+  pole), plus a circumpolar Arctic band spanning all longitudes (~55–90°N) covering
+  Russia's Arctic coast, Alaska, Greenland, Iceland, and Scandinavia. Vessels with a valid
+  heading/course are drawn as rotated arrows — correctly oriented for a polar azimuthal
+  projection, where "true north" at a given point is the direction back toward the pole,
+  not "up" on screen. Tap a vessel for its MMSI, status, speed, and course; tap the "AIS"
+  badge in the header to fly to the current traffic.
 
   Coverage depends entirely on where a receiver exists. aisstream.io's network is
   terrestrial (land-based receivers, ~40-70 km range), and there is very little of that
   infrastructure in the open Arctic Ocean on any free service — genuine blue-water Arctic
   coverage requires paid satellite AIS. In practice this means traffic clusters near
-  populated coasts and Arctic gateway communities rather than the high seas.
+  populated coasts and Arctic gateway communities (Scandinavia and Iceland show up well;
+  Russia's Northern Sea Route and far-north Alaska stay sparse to empty) rather than the
+  high seas.
 
   aisstream.io doesn't accept WebSocket connections directly from a browser page, and its
   API key can't live in this site's public client code, so the connection goes through a

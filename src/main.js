@@ -188,12 +188,24 @@ document.getElementById('reset-view').addEventListener('click', () => {
 // ---------------------------------------------------------------------------
 const AIS_PROXY_URL = import.meta.env.VITE_AIS_PROXY_URL;
 
-// Roughly Canada's coastline and Arctic waters: Pacific coast, Great
-// Lakes/St. Lawrence, Atlantic Canada, Hudson Bay, and the Arctic
-// archipelago up to the pole.
+// Two boxes rather than one big one, so we don't have to pull in a huge
+// swath of ocean at mid-latitudes just to cover both regions:
 const AIS_BOUNDS = [
-  [41, -141],
-  [90, -52],
+  // Canada's coastline and Arctic waters: Pacific coast, Great
+  // Lakes/St. Lawrence, Atlantic Canada, Hudson Bay, and the Arctic
+  // archipelago up to the pole.
+  [
+    [41, -141],
+    [90, -52],
+  ],
+  // Circumpolar Arctic band (all longitudes): Russia's Arctic coast, Alaska,
+  // Greenland, Iceland, and Scandinavia. Coverage still depends on where a
+  // receiver actually exists - dense around Scandinavia/Iceland, sparse to
+  // nonexistent around Russia's Northern Sea Route and far-north Alaska.
+  [
+    [55, -180],
+    [90, 180],
+  ],
 ];
 
 const VESSEL_STALE_MS = 30 * 60 * 1000; // drop vessels not heard from in 30 min
@@ -331,7 +343,7 @@ function connectAis() {
     aisReconnectDelay = 2000;
     socket.send(
       JSON.stringify({
-        BoundingBoxes: [AIS_BOUNDS],
+        BoundingBoxes: AIS_BOUNDS,
         FilterMessageTypes: ['PositionReport'],
       }),
     );
