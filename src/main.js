@@ -71,14 +71,18 @@ const basemap = new TileLayer({
   }),
 });
 
-// A subtle graticule reinforces that this is a polar projection.
+// A subtle graticule reinforces that this is a polar projection. Labels are
+// disabled: OL's Graticule label placement assumes a projection without a
+// singularity, and meridian labels overlap into unreadable clutter near the
+// pole in an azimuthal projection like this one. The coordinate readout
+// panel already gives an exact lat/lon reference, so it's not missed.
 const graticule = new Graticule({
   strokeStyle: new Stroke({
     color: 'rgba(148, 163, 184, 0.35)',
     width: 1,
     lineDash: [1, 4],
   }),
-  showLabels: true,
+  showLabels: false,
   wrapX: false,
   targetSize: 200,
 });
