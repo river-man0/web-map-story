@@ -65,8 +65,24 @@ async function handleClientSocket(server, env) {
     upstream.accept();
     upstream.send(JSON.stringify(subscription));
 
-    upstream.addEventListener('message', (upstreamEvent) => {
-      server.send(upstreamEvent.data);
+    upstream.addEventListener('message', async (upstreamEvent) => {
+      // aisstream.io sends text JSON, but the outbound-fetch-based WebSocket
+      // client in Workers can deliver `data` as a Blob-like object rather
+      // than a plain string. Passing that straight to send() would coerce
+      // it to the literal string "[object Blob]" instead of the payload, so
+      // normalize every possible shape to text first.
+      const data = upstreamEvent.data;
+      let text;
+      if (typeof data === 'string') {
+        text = data;
+      } else if (data instanceof ArrayBuffer) {
+        text = new TextDecoder().decode(data);
+      } else if (typeof data?.text === 'function') {
+        text = await data.text();
+      } else {
+        return;
+      }
+      server.send(text);
     });
     upstream.addEventListener('close', (closeEvent) => {
       server.close(closeEvent.code, closeEvent.reason);
