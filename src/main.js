@@ -68,6 +68,12 @@ const basemap = new TileLayer({
     ],
     crossOrigin: 'anonymous',
     wrapX: true,
+    // Reprojecting into EPSG:3573 warps every tile via triangulated canvas
+    // drawing on the main thread. The default 0.5px error threshold produces
+    // a lot of triangles for a coarse satellite basemap; a looser threshold
+    // cuts that work down substantially with no visible quality loss here,
+    // which matters most on lower-power/mobile browsers.
+    reprojectionErrorThreshold: 3,
   }),
 });
 
@@ -90,7 +96,11 @@ const graticule = new Graticule({
 const view = new View({
   projection: projection3573,
   center: [0, 0], // the North Pole in EPSG:3573
-  zoom: 2,
+  // Starting more zoomed out means covering more physical area, which for a
+  // reprojected geographic source means stitching + warping many more
+  // source tiles for the very first paint. zoom 3 keeps a wide Arctic view
+  // while roughly halving that up-front cost versus zoom 2.
+  zoom: 3,
   minZoom: 0,
   maxZoom: RESOLUTIONS.length - 1,
   resolutions: RESOLUTIONS,
@@ -105,6 +115,11 @@ const map = new Map({
   target: 'map',
   layers: [basemap, graticule],
   view,
+  // Reprojection cost scales with pixel count, so an uncapped devicePixelRatio
+  // (2.5-3+ on many Android phones) makes every tile warp several times more
+  // expensive for no visible benefit against a ~500m-resolution satellite
+  // basemap. Capping it keeps panning/zooming smooth on lower-power devices.
+  pixelRatio: Math.min(window.devicePixelRatio || 1, 1.5),
   controls: defaultControls({ attribution: true, zoom: true, rotate: false }).extend([scaleLine]),
 });
 
@@ -140,5 +155,5 @@ map.on('click', (evt) => updateCoords(evt.coordinate));
 // Reset view
 // ---------------------------------------------------------------------------
 document.getElementById('reset-view').addEventListener('click', () => {
-  view.animate({ center: [0, 0], zoom: 2, duration: 400 });
+  view.animate({ center: [0, 0], zoom: 3, duration: 400 });
 });
