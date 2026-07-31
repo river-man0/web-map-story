@@ -11,7 +11,7 @@
     <title>Arctic Web Map &middot; EPSG:3573</title>
     <meta
       name="description"
-      content="An interactive Arctic web map rendered in the EPSG:3573 (WGS 84 / North Pole LAEA Canada) projection, with live AIS vessel traffic, built with OpenLayers."
+      content="An interactive Arctic web map rendered in the EPSG:3573 (WGS 84 / North Pole LAEA Canada) projection, with live AIS vessel and flight traffic, built with OpenLayers."
     />
   </head>
   <body>
@@ -32,6 +32,14 @@
             title="Live AIS vessel traffic &mdash; tap to fly to it"
           >
             AIS &middot; &mdash;
+          </button>
+          <button
+            id="flight-status"
+            class="btn-flights"
+            type="button"
+            title="Live flight traffic &mdash; tap to fly to it"
+          >
+            Flights &middot; &mdash;
           </button>
           <button id="reset-view" class="btn-reset" type="button" aria-label="Reset view to the North Pole">
             <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" focusable="false">

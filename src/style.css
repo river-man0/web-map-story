@@ -12,6 +12,7 @@
   --accent: #6bc9ff;
   --accent-strong: #3fa9f5;
   --vessel: #f6b93b;
+  --aircraft: #7dd3a8;
   --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'SFMono-Regular', ui-monospace, Menlo, Consolas, monospace;
 
@@ -108,7 +109,8 @@ body {
 }
 
 .btn-reset,
-.btn-ais {
+.btn-ais,
+.btn-flights {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -136,12 +138,19 @@ body {
   border-color: var(--vessel);
 }
 
+.btn-flights:hover:not(:disabled) {
+  background: #1b2330;
+  border-color: var(--aircraft);
+}
+
 .btn-reset:active,
-.btn-ais:active {
+.btn-ais:active,
+.btn-flights:active {
   transform: scale(0.96);
 }
 
-.btn-ais:disabled {
+.btn-ais:disabled,
+.btn-flights:disabled {
   opacity: 0.5;
   cursor: default;
 }
@@ -282,6 +291,10 @@ body {
   padding-right: 16px;
   color: var(--vessel);
   font-family: var(--font-mono);
+}
+
+.popup-title-aircraft {
+  color: var(--aircraft);
 }
 
 .popup-row {
@@ -454,7 +467,8 @@ body {
     padding: 8px;
   }
 
-  .btn-ais {
+  .btn-ais,
+  .btn-flights {
     padding: 8px;
     font-size: 11px;
   }

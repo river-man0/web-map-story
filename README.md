@@ -45,6 +45,18 @@ projection centred on the North Pole.
   to deploy your own. Without one configured, the map still works; the AIS badge just
   reads "AIS not configured".
 
+- **Live flight traffic**, polled from the [OpenSky Network](https://opensky-network.org)
+  REST API over Canada's coastline and Arctic waters (the same box as the primary AIS
+  bounding box). Aircraft with a known heading are drawn as rotated arrows, using the same
+  polar-azimuthal "bearing toward the pole" correction as vessels. Tap an aircraft for its
+  callsign, country, altitude, speed, heading, and climb/descent rate; tap the "Flights"
+  badge in the header to fly to the current traffic.
+
+  Like AIS, OpenSky is routed through the same Cloudflare Worker relay to work around
+  CORS — no separate deployment needed. It works out of the box with OpenSky's anonymous
+  tier (400 requests/day); see [`ais-proxy/README.md`](ais-proxy/README.md) for how to
+  optionally add free OpenSky OAuth2 credentials for a much higher limit (4,000/day).
+
 ## Development
 
 ```bash
@@ -78,16 +90,18 @@ you've deployed `ais-proxy/` (see below). It's a repo variable, not a secret, be
 Worker URL itself isn't sensitive; the actual API key lives only in the Worker's own
 secret store and is never part of this repo or its build output.
 
-## AIS proxy setup
+## AIS + flight proxy setup
 
-Live AIS vessel traffic requires deploying a small Cloudflare Worker that holds the
-aisstream.io API key server-side. See [`ais-proxy/README.md`](ais-proxy/README.md) for
-the one-time setup. The main map works fine without it — the AIS badge just shows "AIS
-not configured" — so this is optional.
+Live AIS vessel traffic and flight traffic both require deploying a small Cloudflare
+Worker: AIS holds the aisstream.io API key server-side, and flights work around
+OpenSky's CORS restriction. Both share one Worker and one deployment. See
+[`ais-proxy/README.md`](ais-proxy/README.md) for the one-time setup. The main map works
+fine without it — the badges just show "not configured" — so this is optional.
 
 ## Attribution
 
 - Imagery: NASA [GIBS](https://earthdata.nasa.gov/gibs) / Suomi NPP VIIRS "Black Marble"
   (`VIIRS_CityLights_2012`)
 - AIS vessel data: [aisstream.io](https://aisstream.io)
+- Flight data: [OpenSky Network](https://opensky-network.org)
 - Map library: [OpenLayers](https://openlayers.org/)

@@ -300,6 +300,7 @@ function handlePositionReport(report) {
   if (!entry) {
     const feature = new Feature({ geometry: new Point(coordinate) });
     feature.set('mmsi', mmsi);
+    feature.set('kind', 'vessel');
     entry = { feature, lastSeen: 0 };
     vesselsByMmsi.set(mmsi, entry);
     vesselSource.addFeature(feature);
@@ -377,7 +378,154 @@ if (aisStatusEl) {
 }
 
 // ---------------------------------------------------------------------------
-// Vessel info popup on click/tap
+// Live flight tracking - OpenSky Network's free REST API. Routed through the
+// same Cloudflare Worker as AIS (at the `/flights` path) because OpenSky
+// only sends an Access-Control-Allow-Origin for its own domain, so a direct
+// browser fetch() would be blocked by CORS.
+//
+// Unlike AIS's push-based WebSocket feed, this is a polled REST snapshot:
+// each poll fully replaces the aircraft on the map rather than tracking
+// individual aircraft over time, since OpenSky's response is already a
+// complete "who's up right now" snapshot for the bounding box.
+// ---------------------------------------------------------------------------
+const FLIGHT_PROXY_URL = AIS_PROXY_URL
+  ? AIS_PROXY_URL.replace(/^ws(s)?:/, 'http$1:').replace(/\/$/, '') + '/flights'
+  : null;
+
+// Same Canada/Arctic coverage box as the primary AIS box. OpenSky's API only
+// accepts a single bounding box per request, and anonymous access is
+// rate-limited (400 requests/day), so this stays a single region rather than
+// the circumpolar band used for AIS.
+const FLIGHT_BOUNDS = { lamin: 41, lomin: -141, lamax: 90, lomax: -52 };
+
+const FLIGHT_POLL_MS = 45_000;
+const FLIGHT_POLL_MAX_MS = 10 * 60_000;
+
+const aircraftArrow = new RegularShape({
+  points: 3,
+  radius: 6,
+  fill: new Fill({ color: '#7dd3a8' }),
+  stroke: new Stroke({ color: 'rgba(10, 14, 20, 0.85)', width: 1 }),
+  rotateWithView: true,
+});
+const aircraftArrowStyle = new Style({ image: aircraftArrow });
+
+const aircraftDotStyle = new Style({
+  image: new CircleStyle({
+    radius: 4,
+    fill: new Fill({ color: '#7dd3a8' }),
+    stroke: new Stroke({ color: 'rgba(10, 14, 20, 0.85)', width: 1 }),
+  }),
+});
+
+function aircraftStyleFunction(feature) {
+  const track = feature.get('track');
+  if (!Number.isFinite(track)) {
+    return aircraftDotStyle;
+  }
+  const screenBearing = bearingTowardPole(feature.getGeometry().getCoordinates()) + track;
+  aircraftArrow.setRotation((screenBearing * Math.PI) / 180);
+  return aircraftArrowStyle;
+}
+
+const flightSource = new VectorSource({
+  attributions: ['Flights: <a href="https://opensky-network.org" target="_blank" rel="noopener">OpenSky Network</a>'],
+});
+
+const flightLayer = new VectorLayer({
+  source: flightSource,
+  style: aircraftStyleFunction,
+});
+map.addLayer(flightLayer);
+
+const flightStatusEl = document.getElementById('flight-status');
+
+function setFlightStatus(text, { enabled } = {}) {
+  if (!flightStatusEl) return;
+  flightStatusEl.textContent = text;
+  if (enabled !== undefined) flightStatusEl.disabled = !enabled;
+}
+
+function applyFlightStates(states) {
+  const features = [];
+  for (const s of states) {
+    const [icao24, callsign, originCountry, , , lon, lat, baroAltitude, onGround, velocity, trueTrack, verticalRate] =
+      s;
+    if (onGround) continue;
+    if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
+
+    const coordinate = transform([lon, lat], 'EPSG:4326', view.getProjection());
+    const feature = new Feature({ geometry: new Point(coordinate) });
+    feature.set('kind', 'aircraft');
+    feature.set('icao24', icao24);
+    feature.set('callsign', callsign ? callsign.trim() : null);
+    feature.set('originCountry', originCountry);
+    feature.set('altitude', baroAltitude);
+    feature.set('velocity', velocity);
+    feature.set('track', trueTrack);
+    feature.set('verticalRate', verticalRate);
+    features.push(feature);
+  }
+
+  flightSource.clear();
+  flightSource.addFeatures(features);
+  setFlightStatus(`Flights · ${features.length.toLocaleString()}`, { enabled: features.length > 0 });
+}
+
+let flightPollTimer = null;
+let flightPollDelay = FLIGHT_POLL_MS;
+
+function scheduleNextFlightPoll() {
+  clearTimeout(flightPollTimer);
+  flightPollTimer = setTimeout(pollFlights, flightPollDelay);
+}
+
+async function pollFlights() {
+  if (!FLIGHT_PROXY_URL) {
+    setFlightStatus('Flights not configured', { enabled: false });
+    return;
+  }
+
+  const params = new URLSearchParams({
+    lamin: FLIGHT_BOUNDS.lamin,
+    lomin: FLIGHT_BOUNDS.lomin,
+    lamax: FLIGHT_BOUNDS.lamax,
+    lomax: FLIGHT_BOUNDS.lomax,
+  });
+
+  try {
+    const response = await fetch(`${FLIGHT_PROXY_URL}?${params}`);
+    if (response.status === 429) {
+      flightPollDelay = Math.min(flightPollDelay * 2, FLIGHT_POLL_MAX_MS);
+      setFlightStatus('Flights · rate limited', { enabled: flightSource.getFeatures().length > 0 });
+      scheduleNextFlightPoll();
+      return;
+    }
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+    const data = await response.json();
+    flightPollDelay = FLIGHT_POLL_MS;
+    applyFlightStates(data.states || []);
+  } catch (err) {
+    console.error('flight poll error', err);
+    setFlightStatus('Flights unavailable', { enabled: flightSource.getFeatures().length > 0 });
+  }
+  scheduleNextFlightPoll();
+}
+
+pollFlights();
+
+if (flightStatusEl) {
+  flightStatusEl.addEventListener('click', () => {
+    const extent = flightSource.getExtent();
+    if (extent.every(Number.isFinite)) {
+      view.fit(extent, { padding: [80, 80, 80, 80], duration: 500, maxZoom: 6 });
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Vessel / aircraft info popup on click/tap
 // ---------------------------------------------------------------------------
 const popupEl = document.getElementById('vessel-popup');
 const popupOverlay = new Overlay({
@@ -399,14 +547,14 @@ function formatAge(timestampMs) {
   return hours === 1 ? '1 hour ago' : `${hours} hours ago`;
 }
 
-function showVesselPopup(feature, coordinate) {
+function vesselPopupHtml(feature) {
   const mmsi = feature.get('mmsi');
   const sog = feature.get('sog');
   const cog = feature.get('cog');
   const navStat = feature.get('navStat');
   const updated = feature.get('updatedAt');
 
-  popupEl.innerHTML = `
+  return `
     <button class="popup-close" type="button" aria-label="Close">&times;</button>
     <div class="popup-title">MMSI ${mmsi}</div>
     <div class="popup-row"><span>Status</span><span>${NAV_STATUS[navStat] ?? 'Unknown'}</span></div>
@@ -414,17 +562,51 @@ function showVesselPopup(feature, coordinate) {
     <div class="popup-row"><span>Course</span><span>${Number.isFinite(cog) && cog < 360 ? `${cog.toFixed(0)}°` : 'n/a'}</span></div>
     <div class="popup-row"><span>Updated</span><span>${formatAge(updated)}</span></div>
   `;
+}
+
+function aircraftPopupHtml(feature) {
+  const callsign = feature.get('callsign');
+  const country = feature.get('originCountry');
+  const altitude = feature.get('altitude'); // metres
+  const velocity = feature.get('velocity'); // m/s
+  const track = feature.get('track'); // degrees true
+  const verticalRate = feature.get('verticalRate'); // m/s
+
+  const altitudeFt = Number.isFinite(altitude) ? `${Math.round(altitude * 3.28084).toLocaleString()} ft` : 'n/a';
+  const speedKt = Number.isFinite(velocity) ? `${(velocity * 1.94384).toFixed(0)} kn` : 'n/a';
+  const heading = Number.isFinite(track) ? `${track.toFixed(0)}°` : 'n/a';
+  const vertical = Number.isFinite(verticalRate)
+    ? verticalRate > 0.5
+      ? `climbing ${Math.round(verticalRate * 196.85)} ft/min`
+      : verticalRate < -0.5
+        ? `descending ${Math.round(Math.abs(verticalRate) * 196.85)} ft/min`
+        : 'level'
+    : 'n/a';
+
+  return `
+    <button class="popup-close" type="button" aria-label="Close">&times;</button>
+    <div class="popup-title popup-title-aircraft">${callsign || 'Unknown callsign'}</div>
+    <div class="popup-row"><span>Country</span><span>${country || 'n/a'}</span></div>
+    <div class="popup-row"><span>Altitude</span><span>${altitudeFt}</span></div>
+    <div class="popup-row"><span>Speed</span><span>${speedKt}</span></div>
+    <div class="popup-row"><span>Heading</span><span>${heading}</span></div>
+    <div class="popup-row"><span>Vertical</span><span>${vertical}</span></div>
+  `;
+}
+
+function showFeaturePopup(feature, coordinate) {
+  popupEl.innerHTML = feature.get('kind') === 'aircraft' ? aircraftPopupHtml(feature) : vesselPopupHtml(feature);
   popupEl.querySelector('.popup-close').addEventListener('click', () => popupOverlay.setPosition(undefined));
   popupOverlay.setPosition(coordinate);
 }
 
 map.on('singleclick', (evt) => {
   const feature = map.forEachFeatureAtPixel(evt.pixel, (f) => f, {
-    layerFilter: (l) => l === vesselLayer,
+    layerFilter: (l) => l === vesselLayer || l === flightLayer,
     hitTolerance: 8,
   });
   if (feature) {
-    showVesselPopup(feature, evt.coordinate);
+    showFeaturePopup(feature, evt.coordinate);
   } else {
     popupOverlay.setPosition(undefined);
   }
