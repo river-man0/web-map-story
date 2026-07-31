@@ -21,6 +21,12 @@ projection centred on the North Pole.
 - **Dynamic scale bar** that updates automatically as you pan and zoom.
 - **Mobile-friendly layout** with touch-sized controls and safe-area-aware spacing.
 - Basemap tiles from **NASA GIBS** (public, free WMTS endpoint) — no API key required.
+- **Live AIS vessel traffic** for Finnish/Baltic coastal waters, from Digitraffic
+  (Fintraffic)'s free public REST API, refreshed every 60 seconds. Vessels with a valid
+  heading/course are drawn as rotated arrows — correctly oriented for a polar azimuthal
+  projection, where "true north" at a given point is the direction back toward the pole,
+  not "up" on screen. Tap a vessel for its MMSI, status, speed, and course; tap the "AIS"
+  badge in the header to fly to the current traffic.
 
 ## Development
 
@@ -52,4 +58,6 @@ match this repository's GitHub Pages project URL.
 
 - Imagery: NASA [GIBS](https://earthdata.nasa.gov/gibs) / Suomi NPP VIIRS "Black Marble"
   (`VIIRS_CityLights_2012`)
+- AIS vessel data: [Fintraffic / Digitraffic](https://www.digitraffic.fi/en/marine-traffic/)
+  (CC BY 4.0)
 - Map library: [OpenLayers](https://openlayers.org/)

@@ -11,7 +11,7 @@
     <title>Arctic Web Map &middot; EPSG:3573</title>
     <meta
       name="description"
-      content="An interactive Arctic web map rendered in the EPSG:3573 (WGS 84 / North Pole LAEA Canada) projection, built with OpenLayers."
+      content="An interactive Arctic web map rendered in the EPSG:3573 (WGS 84 / North Pole LAEA Canada) projection, with live AIS vessel traffic, built with OpenLayers."
     />
   </head>
   <body>
@@ -24,15 +24,25 @@
             <p>EPSG:3573 &middot; North Pole LAEA Canada</p>
           </div>
         </div>
-        <button id="reset-view" class="btn-reset" type="button" aria-label="Reset view to the North Pole">
-          <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" focusable="false">
-            <path
-              fill="currentColor"
-              d="M10 3a7 7 0 1 0 6.32 4.02.75.75 0 0 1 1.36-.63A8.5 8.5 0 1 1 10 1.5v-1a.5.5 0 0 1 .82-.38l2.5 2.13a.5.5 0 0 1 0 .76l-2.5 2.13A.5.5 0 0 1 10 5V3Z"
-            />
-          </svg>
-          <span>Reset view</span>
-        </button>
+        <div class="header-actions">
+          <button
+            id="ais-status"
+            class="btn-ais"
+            type="button"
+            title="Live AIS vessel traffic &mdash; tap to fly to it"
+          >
+            AIS &middot; &mdash;
+          </button>
+          <button id="reset-view" class="btn-reset" type="button" aria-label="Reset view to the North Pole">
+            <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" focusable="false">
+              <path
+                fill="currentColor"
+                d="M10 3a7 7 0 1 0 6.32 4.02.75.75 0 0 1 1.36-.63A8.5 8.5 0 1 1 10 1.5v-1a.5.5 0 0 1 .82-.38l2.5 2.13a.5.5 0 0 1 0 .76l-2.5 2.13A.5.5 0 0 1 10 5V3Z"
+              />
+            </svg>
+            <span>Reset view</span>
+          </button>
+        </div>
       </header>
 
       <main class="map-shell">
@@ -50,6 +60,8 @@
         </div>
 
         <div class="panel panel-hint" id="hint">Hover or tap the map for coordinates</div>
+
+        <div class="popup" id="vessel-popup"></div>
       </main>
 
       <footer class="app-footer">
