@@ -36,6 +36,17 @@ const HALF_EXTENT = 5_500_000;
 projection3573.setExtent([-HALF_EXTENT, -HALF_EXTENT, HALF_EXTENT, HALF_EXTENT]);
 projection3573.setWorldExtent([-180, 45, 180, 90]);
 
+// OL treats EPSG:4326 as a "global" (horizontally-wrapping) projection by
+// default, which is right for scrolling world maps. But our basemap gets
+// reprojected into a *polar* view, where a single low-zoom tile near the
+// pole back-projects to a source footprint spanning nearly the full 360deg
+// of longitude. OL's wrap-around reprojection triangulation doesn't handle
+// that edge case cleanly, producing a blank wedge at the antimeridian that
+// only goes away once tiles are small enough to no longer straddle it. This
+// app never relies on EPSG:4326 wrapping (all our lon/lat values are always
+// naturally in-range), so disabling it sidesteps the bug entirely.
+getProjection('EPSG:4326').setGlobal(false);
+
 // Fixed resolution ladder (metres/pixel) so tiling stays predictable while
 // the basemap is reprojected on the fly into EPSG:3573. Capped at 128 m/px,
 // close to the basemap's native ~500 m resolution, to avoid zooming into blur.
