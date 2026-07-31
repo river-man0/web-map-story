@@ -1,14 +1,15 @@
 import 'ol/ol.css';
 import './style.css';
 
-import Map from 'ol/Map';
+import OlMap from 'ol/Map';
 import View from 'ol/View';
 import TileLayer from 'ol/layer/Tile';
 import VectorLayer from 'ol/layer/Vector';
 import WMTS from 'ol/source/WMTS';
 import WMTSTileGrid from 'ol/tilegrid/WMTS';
 import VectorSource from 'ol/source/Vector';
-import GeoJSON from 'ol/format/GeoJSON';
+import Feature from 'ol/Feature';
+import Point from 'ol/geom/Point';
 import Graticule from 'ol/layer/Graticule';
 import { Style, Stroke, Fill, RegularShape, Circle as CircleStyle } from 'ol/style';
 import { defaults as defaultControls, ScaleLine } from 'ol/control';
@@ -115,7 +116,7 @@ const scaleLine = new ScaleLine({
   minWidth: 90,
 });
 
-const map = new Map({
+const map = new OlMap({
   target: 'map',
   layers: [basemap, graticule],
   view,
@@ -163,11 +164,28 @@ document.getElementById('reset-view').addEventListener('click', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Live AIS vessel traffic - Digitraffic (Fintraffic), a free public REST API
-// covering Finnish/Baltic coastal waters. No API key required.
+// Live AIS vessel traffic - aisstream.io, a free global feed built from
+// volunteer terrestrial AIS receivers. Connections go through a small relay
+// (see ais-proxy/) because aisstream.io doesn't accept WebSocket connections
+// directly from a browser, and the API key can't live in public client code.
+//
+// Coverage is inherently limited to wherever a receiver exists. There is
+// very little receiver infrastructure in the open Arctic Ocean on *any*
+// free network - that requires paid satellite AIS - so expect traffic
+// mostly near populated Canadian coastlines and Arctic gateway communities
+// rather than the high seas.
 // ---------------------------------------------------------------------------
-const AIS_URL = 'https://meri.digitraffic.fi/api/ais/v1/locations';
-const AIS_REFRESH_MS = 60_000; // matches the API's own cache freshness
+const AIS_PROXY_URL = import.meta.env.VITE_AIS_PROXY_URL;
+
+// Roughly Canada's coastline and Arctic waters: Pacific coast, Great
+// Lakes/St. Lawrence, Atlantic Canada, Hudson Bay, and the Arctic
+// archipelago up to the pole.
+const AIS_BOUNDS = [
+  [41, -141],
+  [90, -52],
+];
+
+const VESSEL_STALE_MS = 30 * 60 * 1000; // drop vessels not heard from in 30 min
 
 const NAV_STATUS = {
   0: 'Under way (engine)',
@@ -180,8 +198,6 @@ const NAV_STATUS = {
   7: 'Fishing',
   8: 'Under way sailing',
 };
-
-const geoJsonFormat = new GeoJSON();
 
 // A vessel with a valid heading/course is drawn as a triangle rotated to
 // point the right way *on screen*. EPSG:3573 is a polar azimuthal
@@ -226,9 +242,7 @@ function vesselStyleFunction(feature) {
 }
 
 const vesselSource = new VectorSource({
-  attributions: [
-    'AIS: <a href="https://www.digitraffic.fi/en/marine-traffic/" target="_blank" rel="noopener">Fintraffic / Digitraffic</a> (CC BY 4.0)',
-  ],
+  attributions: ['AIS: <a href="https://aisstream.io" target="_blank" rel="noopener">aisstream.io</a>'],
 });
 
 const vesselLayer = new VectorLayer({
@@ -238,32 +252,108 @@ const vesselLayer = new VectorLayer({
 map.addLayer(vesselLayer);
 
 const aisStatusEl = document.getElementById('ais-status');
+const vesselsByMmsi = new Map(); // mmsi -> { feature, lastSeen }
 
-async function refreshVessels() {
-  try {
-    const response = await fetch(AIS_URL, {
-      headers: { 'Digitraffic-User': 'web-map-story-arctic-demo' },
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const geojson = await response.json();
-    const features = geoJsonFormat.readFeatures(geojson, {
-      dataProjection: 'EPSG:4326',
-      featureProjection: view.getProjection(),
-    });
-    vesselSource.clear(true);
-    vesselSource.addFeatures(features);
-    if (aisStatusEl) {
-      aisStatusEl.textContent = `AIS · ${features.length.toLocaleString()}`;
-      aisStatusEl.disabled = features.length === 0;
-    }
-  } catch (err) {
-    if (aisStatusEl) aisStatusEl.textContent = 'AIS unavailable';
-    console.error('Failed to load AIS vessel data', err);
-  }
+function setAisStatus(text, { enabled } = {}) {
+  if (!aisStatusEl) return;
+  aisStatusEl.textContent = text;
+  if (enabled !== undefined) aisStatusEl.disabled = !enabled;
 }
 
-refreshVessels();
-setInterval(refreshVessels, AIS_REFRESH_MS);
+function updateVesselCount() {
+  setAisStatus(`AIS · ${vesselsByMmsi.size.toLocaleString()}`, { enabled: vesselsByMmsi.size > 0 });
+}
+
+function pruneStaleVessels() {
+  const cutoff = Date.now() - VESSEL_STALE_MS;
+  for (const [mmsi, entry] of vesselsByMmsi) {
+    if (entry.lastSeen < cutoff) {
+      vesselSource.removeFeature(entry.feature);
+      vesselsByMmsi.delete(mmsi);
+    }
+  }
+  updateVesselCount();
+}
+setInterval(pruneStaleVessels, 60_000);
+
+function handlePositionReport(report) {
+  const mmsi = report.UserID;
+  const lon = report.Longitude;
+  const lat = report.Latitude;
+  if (!Number.isFinite(mmsi) || !Number.isFinite(lon) || !Number.isFinite(lat)) return;
+
+  const coordinate = transform([lon, lat], 'EPSG:4326', view.getProjection());
+  let entry = vesselsByMmsi.get(mmsi);
+
+  if (!entry) {
+    const feature = new Feature({ geometry: new Point(coordinate) });
+    feature.set('mmsi', mmsi);
+    entry = { feature, lastSeen: 0 };
+    vesselsByMmsi.set(mmsi, entry);
+    vesselSource.addFeature(feature);
+  } else {
+    entry.feature.getGeometry().setCoordinates(coordinate);
+  }
+
+  entry.feature.set('sog', report.Sog);
+  entry.feature.set('cog', report.Cog);
+  entry.feature.set('heading', report.TrueHeading);
+  entry.feature.set('navStat', report.NavigationalStatus);
+  entry.lastSeen = Date.now();
+  entry.feature.set('updatedAt', entry.lastSeen);
+
+  updateVesselCount();
+}
+
+let aisReconnectDelay = 2000;
+
+function connectAis() {
+  if (!AIS_PROXY_URL) {
+    setAisStatus('AIS not configured', { enabled: false });
+    return;
+  }
+
+  setAisStatus('AIS · connecting…', { enabled: false });
+  const socket = new WebSocket(AIS_PROXY_URL);
+
+  socket.addEventListener('open', () => {
+    aisReconnectDelay = 2000;
+    socket.send(
+      JSON.stringify({
+        BoundingBoxes: [AIS_BOUNDS],
+        FilterMessageTypes: ['PositionReport'],
+      }),
+    );
+    updateVesselCount();
+  });
+
+  socket.addEventListener('message', (event) => {
+    let payload;
+    try {
+      payload = JSON.parse(event.data);
+    } catch {
+      return;
+    }
+    if (payload.error) {
+      console.error('AIS stream error', payload.error);
+      setAisStatus('AIS unavailable', { enabled: false });
+      return;
+    }
+    if (payload.MessageType === 'PositionReport') {
+      handlePositionReport(payload.Message.PositionReport);
+    }
+  });
+
+  socket.addEventListener('close', () => {
+    setAisStatus('AIS · reconnecting…', { enabled: vesselsByMmsi.size > 0 });
+    setTimeout(connectAis, aisReconnectDelay);
+    aisReconnectDelay = Math.min(aisReconnectDelay * 2, 30_000);
+  });
+
+  socket.addEventListener('error', () => socket.close());
+}
+
+connectAis();
 
 if (aisStatusEl) {
   aisStatusEl.addEventListener('click', () => {
@@ -302,7 +392,7 @@ function showVesselPopup(feature, coordinate) {
   const sog = feature.get('sog');
   const cog = feature.get('cog');
   const navStat = feature.get('navStat');
-  const updated = feature.get('timestampExternal');
+  const updated = feature.get('updatedAt');
 
   popupEl.innerHTML = `
     <button class="popup-close" type="button" aria-label="Close">&times;</button>

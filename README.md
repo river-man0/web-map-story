@@ -21,17 +21,31 @@ projection centred on the North Pole.
 - **Dynamic scale bar** that updates automatically as you pan and zoom.
 - **Mobile-friendly layout** with touch-sized controls and safe-area-aware spacing.
 - Basemap tiles from **NASA GIBS** (public, free WMTS endpoint) — no API key required.
-- **Live AIS vessel traffic** for Finnish/Baltic coastal waters, from Digitraffic
-  (Fintraffic)'s free public REST API, refreshed every 60 seconds. Vessels with a valid
-  heading/course are drawn as rotated arrows — correctly oriented for a polar azimuthal
-  projection, where "true north" at a given point is the direction back toward the pole,
-  not "up" on screen. Tap a vessel for its MMSI, status, speed, and course; tap the "AIS"
-  badge in the header to fly to the current traffic.
+- **Live AIS vessel traffic**, streamed from [aisstream.io](https://aisstream.io), filtered
+  to Canada's coastline and Arctic waters (Pacific coast, Great Lakes/St. Lawrence,
+  Atlantic Canada, Hudson Bay, and the Arctic archipelago up to the pole). Vessels with a
+  valid heading/course are drawn as rotated arrows — correctly oriented for a polar
+  azimuthal projection, where "true north" at a given point is the direction back toward
+  the pole, not "up" on screen. Tap a vessel for its MMSI, status, speed, and course; tap
+  the "AIS" badge in the header to fly to the current traffic.
+
+  Coverage depends entirely on where a receiver exists. aisstream.io's network is
+  terrestrial (land-based receivers, ~40-70 km range), and there is very little of that
+  infrastructure in the open Arctic Ocean on any free service — genuine blue-water Arctic
+  coverage requires paid satellite AIS. In practice this means traffic clusters near
+  populated coasts and Arctic gateway communities rather than the high seas.
+
+  aisstream.io doesn't accept WebSocket connections directly from a browser page, and its
+  API key can't live in this site's public client code, so the connection goes through a
+  small Cloudflare Worker relay — see [`ais-proxy/`](ais-proxy/) for what it does and how
+  to deploy your own. Without one configured, the map still works; the AIS badge just
+  reads "AIS not configured".
 
 ## Development
 
 ```bash
 npm install
+cp .env.example .env   # fill in VITE_AIS_PROXY_URL once you've deployed ais-proxy/
 npm run dev
 ```
 
@@ -54,10 +68,22 @@ To enable it on a repository for the first time, go to **Settings → Pages** an
 The site is served from `/web-map-story/`, configured via `base` in `vite.config.js` to
 match this repository's GitHub Pages project URL.
 
+The build step reads `VITE_AIS_PROXY_URL` from the `AIS_PROXY_URL` **repository
+variable** (Settings → Secrets and variables → Actions → Variables) — set this once
+you've deployed `ais-proxy/` (see below). It's a repo variable, not a secret, because the
+Worker URL itself isn't sensitive; the actual API key lives only in the Worker's own
+secret store and is never part of this repo or its build output.
+
+## AIS proxy setup
+
+Live AIS vessel traffic requires deploying a small Cloudflare Worker that holds the
+aisstream.io API key server-side. See [`ais-proxy/README.md`](ais-proxy/README.md) for
+the one-time setup. The main map works fine without it — the AIS badge just shows "AIS
+not configured" — so this is optional.
+
 ## Attribution
 
 - Imagery: NASA [GIBS](https://earthdata.nasa.gov/gibs) / Suomi NPP VIIRS "Black Marble"
   (`VIIRS_CityLights_2012`)
-- AIS vessel data: [Fintraffic / Digitraffic](https://www.digitraffic.fi/en/marine-traffic/)
-  (CC BY 4.0)
+- AIS vessel data: [aisstream.io](https://aisstream.io)
 - Map library: [OpenLayers](https://openlayers.org/)
