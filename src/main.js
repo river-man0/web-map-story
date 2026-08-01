@@ -378,28 +378,46 @@ if (aisStatusEl) {
 }
 
 // ---------------------------------------------------------------------------
-// Live flight tracking - OpenSky Network's free REST API. Routed through the
-// same Cloudflare Worker as AIS (at the `/flights` path) because OpenSky
-// only sends an Access-Control-Allow-Origin for its own domain, so a direct
-// browser fetch() would be blocked by CORS.
+// Live flight tracking - airplanes.live's free public ADS-B REST API,
+// queried directly from the browser (it sends a permissive
+// Access-Control-Allow-Origin, so unlike AIS/OpenSky, no proxy is needed
+// here at all).
 //
-// Unlike AIS's push-based WebSocket feed, this is a polled REST snapshot:
-// each poll fully replaces the aircraft on the map rather than tracking
-// individual aircraft over time, since OpenSky's response is already a
-// complete "who's up right now" snapshot for the bounding box.
+// An earlier version of this routed through a Cloudflare Worker to OpenSky
+// Network instead, but OpenSky was found to silently block Cloudflare's
+// outbound IP ranges as an anti-scraping measure (every request just hung
+// until Cloudflare's edge killed it) - a hard block no amount of proxy code
+// could work around. airplanes.live has no such restriction.
+//
+// Its query shape is different too: instead of one big bounding box,
+// airplanes.live returns aircraft within a radius (capped at 250 nm) of a
+// single point. To approximate the same Canada/Arctic coverage used for
+// AIS, several points are queried and merged - one per major air corridor
+// / population centre plus a couple of Arctic gateways, similar in spirit
+// to how AIS traffic naturally clusters near receiver-covered coastlines.
+//
+// Like AIS, this is a polled snapshot rather than a push feed: each poll
+// fully replaces the aircraft on the map.
 // ---------------------------------------------------------------------------
-const FLIGHT_PROXY_URL = AIS_PROXY_URL
-  ? AIS_PROXY_URL.replace(/^ws(s)?:/, 'http$1:').replace(/\/$/, '') + '/flights'
-  : null;
+const AIRPLANES_LIVE_BASE = 'https://api.airplanes.live/v2/point';
+const FLIGHT_QUERY_RADIUS_NM = 250; // airplanes.live's documented per-request maximum
 
-// Same Canada/Arctic coverage box as the primary AIS box. OpenSky's API only
-// accepts a single bounding box per request, and anonymous access is
-// rate-limited (400 requests/day), so this stays a single region rather than
-// the circumpolar band used for AIS.
-const FLIGHT_BOUNDS = { lamin: 41, lomin: -141, lamax: 90, lomax: -52 };
+const FLIGHT_QUERY_POINTS = [
+  { lat: 49.28, lon: -123.12, label: 'Vancouver' },
+  { lat: 51.05, lon: -114.07, label: 'Calgary' },
+  { lat: 49.9, lon: -97.14, label: 'Winnipeg' },
+  { lat: 43.65, lon: -79.38, label: 'Toronto' },
+  { lat: 45.5, lon: -73.57, label: 'Montreal' },
+  { lat: 44.65, lon: -63.57, label: 'Halifax' },
+  { lat: 62.45, lon: -114.37, label: 'Yellowknife' },
+  { lat: 63.75, lon: -68.52, label: 'Iqaluit' },
+];
+
+// airplanes.live documents a 1 request/second limit; querying points
+// sequentially with this stagger between them respects that.
+const FLIGHT_QUERY_STAGGER_MS = 1100;
 
 const FLIGHT_POLL_MS = 45_000;
-const FLIGHT_POLL_MAX_MS = 10 * 60_000;
 
 const aircraftArrow = new RegularShape({
   points: 3,
@@ -429,7 +447,7 @@ function aircraftStyleFunction(feature) {
 }
 
 const flightSource = new VectorSource({
-  attributions: ['Flights: <a href="https://opensky-network.org" target="_blank" rel="noopener">OpenSky Network</a>'],
+  attributions: ['Flights: <a href="https://airplanes.live" target="_blank" rel="noopener">airplanes.live</a>'],
 });
 
 const flightLayer = new VectorLayer({
@@ -446,70 +464,73 @@ function setFlightStatus(text, { enabled } = {}) {
   if (enabled !== undefined) flightStatusEl.disabled = !enabled;
 }
 
-function applyFlightStates(states) {
-  const features = [];
-  for (const s of states) {
-    const [icao24, callsign, originCountry, , , lon, lat, baroAltitude, onGround, velocity, trueTrack, verticalRate] =
-      s;
-    if (onGround) continue;
-    if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
+function aircraftFromRecord(ac) {
+  const lat = ac.lat;
+  const lon = ac.lon;
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  if (ac.alt_baro === 'ground') return null; // exclude aircraft on the ground
 
-    const coordinate = transform([lon, lat], 'EPSG:4326', view.getProjection());
-    const feature = new Feature({ geometry: new Point(coordinate) });
-    feature.set('kind', 'aircraft');
-    feature.set('icao24', icao24);
-    feature.set('callsign', callsign ? callsign.trim() : null);
-    feature.set('originCountry', originCountry);
-    feature.set('altitude', baroAltitude);
-    feature.set('velocity', velocity);
-    feature.set('track', trueTrack);
-    feature.set('verticalRate', verticalRate);
-    features.push(feature);
-  }
+  const coordinate = transform([lon, lat], 'EPSG:4326', view.getProjection());
+  const feature = new Feature({ geometry: new Point(coordinate) });
+  feature.set('kind', 'aircraft');
+  feature.set('hex', ac.hex);
+  feature.set('callsign', ac.flight ? ac.flight.trim() : null);
+  feature.set('registration', ac.r ?? null);
+  feature.set('aircraftType', ac.desc ?? ac.t ?? null);
+  feature.set('altitude', Number.isFinite(ac.alt_baro) ? ac.alt_baro : null);
+  feature.set('speed', Number.isFinite(ac.gs) ? ac.gs : null);
+  feature.set('track', Number.isFinite(ac.track) ? ac.track : null);
+  feature.set('verticalRate', Number.isFinite(ac.baro_rate) ? ac.baro_rate : null);
+  return feature;
+}
 
-  flightSource.clear();
-  flightSource.addFeatures(features);
-  setFlightStatus(`Flights · ${features.length.toLocaleString()}`, { enabled: features.length > 0 });
+async function fetchFlightPoint(point) {
+  const url = `${AIRPLANES_LIVE_BASE}/${point.lat}/${point.lon}/${FLIGHT_QUERY_RADIUS_NM}`;
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const data = await response.json();
+  return data.ac || [];
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 let flightPollTimer = null;
-let flightPollDelay = FLIGHT_POLL_MS;
 
 function scheduleNextFlightPoll() {
   clearTimeout(flightPollTimer);
-  flightPollTimer = setTimeout(pollFlights, flightPollDelay);
+  flightPollTimer = setTimeout(pollFlights, FLIGHT_POLL_MS);
 }
 
 async function pollFlights() {
-  if (!FLIGHT_PROXY_URL) {
-    setFlightStatus('Flights not configured', { enabled: false });
-    return;
-  }
+  const byHex = new Map();
+  let successCount = 0;
 
-  const params = new URLSearchParams({
-    lamin: FLIGHT_BOUNDS.lamin,
-    lomin: FLIGHT_BOUNDS.lomin,
-    lamax: FLIGHT_BOUNDS.lamax,
-    lomax: FLIGHT_BOUNDS.lomax,
-  });
-
-  try {
-    const response = await fetch(`${FLIGHT_PROXY_URL}?${params}`);
-    if (response.status === 429) {
-      flightPollDelay = Math.min(flightPollDelay * 2, FLIGHT_POLL_MAX_MS);
-      setFlightStatus('Flights · rate limited', { enabled: flightSource.getFeatures().length > 0 });
-      scheduleNextFlightPoll();
-      return;
+  for (let i = 0; i < FLIGHT_QUERY_POINTS.length; i++) {
+    if (i > 0) await sleep(FLIGHT_QUERY_STAGGER_MS);
+    try {
+      const records = await fetchFlightPoint(FLIGHT_QUERY_POINTS[i]);
+      successCount++;
+      for (const record of records) {
+        if (!record.hex || byHex.has(record.hex)) continue;
+        const feature = aircraftFromRecord(record);
+        if (feature) byHex.set(record.hex, feature);
+      }
+    } catch (err) {
+      console.error(`flight query failed for ${FLIGHT_QUERY_POINTS[i].label}`, err);
     }
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-    const data = await response.json();
-    flightPollDelay = FLIGHT_POLL_MS;
-    applyFlightStates(data.states || []);
-  } catch (err) {
-    console.error('flight poll error', err);
-    setFlightStatus('Flights unavailable', { enabled: flightSource.getFeatures().length > 0 });
   }
+
+  if (successCount === 0) {
+    setFlightStatus('Flights unavailable', { enabled: flightSource.getFeatures().length > 0 });
+  } else {
+    const features = [...byHex.values()];
+    flightSource.clear();
+    flightSource.addFeatures(features);
+    setFlightStatus(`Flights · ${features.length.toLocaleString()}`, { enabled: features.length > 0 });
+  }
+
   scheduleNextFlightPoll();
 }
 
@@ -566,29 +587,31 @@ function vesselPopupHtml(feature) {
 
 function aircraftPopupHtml(feature) {
   const callsign = feature.get('callsign');
-  const country = feature.get('originCountry');
-  const altitude = feature.get('altitude'); // metres
-  const velocity = feature.get('velocity'); // m/s
+  const registration = feature.get('registration');
+  const aircraftType = feature.get('aircraftType');
+  const altitude = feature.get('altitude'); // feet
+  const speed = feature.get('speed'); // knots
   const track = feature.get('track'); // degrees true
-  const verticalRate = feature.get('verticalRate'); // m/s
+  const verticalRate = feature.get('verticalRate'); // ft/min
 
-  const altitudeFt = Number.isFinite(altitude) ? `${Math.round(altitude * 3.28084).toLocaleString()} ft` : 'n/a';
-  const speedKt = Number.isFinite(velocity) ? `${(velocity * 1.94384).toFixed(0)} kn` : 'n/a';
+  const title = callsign || registration || feature.get('hex') || 'Unknown aircraft';
+  const altitudeText = Number.isFinite(altitude) ? `${altitude.toLocaleString()} ft` : 'n/a';
+  const speedText = Number.isFinite(speed) ? `${Math.round(speed)} kn` : 'n/a';
   const heading = Number.isFinite(track) ? `${track.toFixed(0)}°` : 'n/a';
   const vertical = Number.isFinite(verticalRate)
-    ? verticalRate > 0.5
-      ? `climbing ${Math.round(verticalRate * 196.85)} ft/min`
-      : verticalRate < -0.5
-        ? `descending ${Math.round(Math.abs(verticalRate) * 196.85)} ft/min`
+    ? verticalRate > 100
+      ? `climbing ${Math.round(verticalRate)} ft/min`
+      : verticalRate < -100
+        ? `descending ${Math.round(Math.abs(verticalRate))} ft/min`
         : 'level'
     : 'n/a';
 
   return `
     <button class="popup-close" type="button" aria-label="Close">&times;</button>
-    <div class="popup-title popup-title-aircraft">${callsign || 'Unknown callsign'}</div>
-    <div class="popup-row"><span>Country</span><span>${country || 'n/a'}</span></div>
-    <div class="popup-row"><span>Altitude</span><span>${altitudeFt}</span></div>
-    <div class="popup-row"><span>Speed</span><span>${speedKt}</span></div>
+    <div class="popup-title popup-title-aircraft">${title}</div>
+    ${aircraftType ? `<div class="popup-row"><span>Type</span><span>${aircraftType}</span></div>` : ''}
+    <div class="popup-row"><span>Altitude</span><span>${altitudeText}</span></div>
+    <div class="popup-row"><span>Speed</span><span>${speedText}</span></div>
     <div class="popup-row"><span>Heading</span><span>${heading}</span></div>
     <div class="popup-row"><span>Vertical</span><span>${vertical}</span></div>
   `;

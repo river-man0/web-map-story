@@ -1,48 +1,27 @@
 /**
- * Two relays sharing one Worker:
+ * WebSocket relay for aisstream.io (live AIS vessel data). aisstream.io does
+ * not accept WebSocket connections directly from a browser (there is no
+ * backend for a static GitHub Pages site to hold the API key server-side),
+ * so this sits in between:
  *
- * 1. WebSocket relay for aisstream.io (live AIS vessel data). aisstream.io
- *    does not accept WebSocket connections directly from a browser (there
- *    is no backend for a static GitHub Pages site to hold the API key
- *    server-side), so this sits in between:
+ *   browser --(wss, no key)--> this Worker --(wss, key injected)--> aisstream.io
  *
- *      browser --(wss, no key)--> this Worker --(wss, key injected)--> aisstream.io
+ * The browser sends a subscription message (bounding box / filters, no API
+ * key). This Worker waits for that message, injects the API key from a
+ * Worker secret, opens the upstream connection to aisstream.io, and relays
+ * messages in both directions verbatim.
  *
- *    The browser sends a subscription message (bounding box / filters, no
- *    API key). This Worker waits for that message, injects the API key
- *    from a Worker secret, opens the upstream connection to aisstream.io,
- *    and relays messages in both directions verbatim.
- *
- * 2. REST CORS relay for OpenSky Network (live flight data), at the
- *    `/flights` path. OpenSky's API only sends an
- *    Access-Control-Allow-Origin for its own domain, so a browser fetch()
- *    from this site would be blocked by CORS even though the request
- *    itself would succeed. This forwards the request server-side (where
- *    CORS doesn't apply) and adds a permissive CORS header to the
- *    response. It also transparently upgrades to OpenSky's OAuth2 tier
- *    (4,000 requests/day instead of 400) when OPENSKY_CLIENT_ID and
- *    OPENSKY_CLIENT_SECRET secrets are configured, falling back to
- *    anonymous access otherwise.
+ * (Live flight tracking, previously proxied here via OpenSky, now queries
+ * airplanes.live directly from the browser instead — that API sends
+ * permissive CORS headers, and OpenSky was found to silently block
+ * Cloudflare's outbound IP ranges as an anti-scraping measure, which no
+ * amount of proxying could work around.)
  */
 
 const AISSTREAM_URL = 'https://stream.aisstream.io/v0/stream';
-const OPENSKY_STATES_URL = 'https://opensky-network.org/api/states/all';
-const OPENSKY_TOKEN_URL =
-  'https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token';
-
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, OPTIONS',
-};
 
 export default {
   async fetch(request, env) {
-    const url = new URL(request.url);
-
-    if (url.pathname === '/flights') {
-      return handleFlightsRequest(request, url, env);
-    }
-
     if (request.headers.get('Upgrade') !== 'websocket') {
       return new Response('Expected a WebSocket upgrade request', { status: 426 });
     }
@@ -64,73 +43,6 @@ export default {
     return new Response(null, { status: 101, webSocket: client });
   },
 };
-
-// ---------------------------------------------------------------------------
-// OpenSky flight tracking (REST CORS relay + optional OAuth2 upgrade)
-// ---------------------------------------------------------------------------
-
-// Module-level cache: Workers reuse the same isolate across requests while
-// it's warm, so this avoids re-authenticating on every single poll.
-let cachedToken = null;
-let tokenExpiresAt = 0;
-
-async function getOpenSkyToken(env) {
-  if (!env.OPENSKY_CLIENT_ID || !env.OPENSKY_CLIENT_SECRET) {
-    return null; // anonymous fallback
-  }
-  if (cachedToken && Date.now() < tokenExpiresAt) {
-    return cachedToken;
-  }
-  const resp = await fetch(OPENSKY_TOKEN_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'client_credentials',
-      client_id: env.OPENSKY_CLIENT_ID,
-      client_secret: env.OPENSKY_CLIENT_SECRET,
-    }),
-  });
-  if (!resp.ok) {
-    console.error('OpenSky auth failed', resp.status, await resp.text());
-    return null; // fall back to anonymous rather than failing the request
-  }
-  const data = await resp.json();
-  cachedToken = data.access_token;
-  tokenExpiresAt = Date.now() + (data.expires_in - 60) * 1000; // refresh 60s early
-  return cachedToken;
-}
-
-async function handleFlightsRequest(request, url, env) {
-  if (request.method === 'OPTIONS') {
-    return new Response(null, { headers: CORS_HEADERS });
-  }
-
-  const upstream = new URL(OPENSKY_STATES_URL);
-  for (const key of ['lamin', 'lomin', 'lamax', 'lomax']) {
-    const value = url.searchParams.get(key);
-    if (value !== null) upstream.searchParams.set(key, value);
-  }
-
-  const headers = {};
-  const token = await getOpenSkyToken(env);
-  if (token) headers.Authorization = `Bearer ${token}`;
-
-  let upstreamResponse;
-  try {
-    upstreamResponse = await fetch(upstream, { headers });
-  } catch (err) {
-    return new Response(JSON.stringify({ error: 'Could not reach OpenSky: ' + String(err) }), {
-      status: 502,
-      headers: { 'Content-Type': 'application/json', ...CORS_HEADERS },
-    });
-  }
-
-  const body = await upstreamResponse.text();
-  return new Response(body, {
-    status: upstreamResponse.status,
-    headers: { 'Content-Type': 'application/json', ...CORS_HEADERS },
-  });
-}
 
 async function handleClientSocket(server, env) {
   let upstream = null;
