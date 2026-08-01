@@ -393,8 +393,13 @@ if (aisStatusEl) {
 // airplanes.live returns aircraft within a radius (capped at 250 nm) of a
 // single point. To approximate the same Canada/Arctic coverage used for
 // AIS, several points are queried and merged - one per major air corridor
-// / population centre plus a couple of Arctic gateways, similar in spirit
-// to how AIS traffic naturally clusters near receiver-covered coastlines.
+// / population centre, plus a chain of high-Arctic points (Resolute,
+// Utqiagvik, Longyearbyen, Station Nord, Alert, Nagurskoye) whose 250 nm
+// radii overlap up to the pole, ending in a point near the pole itself.
+// Like AIS's circumpolar band, real coverage still depends on where an
+// ADS-B ground receiver actually exists, so expect it to be thin over the
+// high seas and the Russian Arctic - but unlike the fixed points below it,
+// the query itself now actually reaches that far.
 //
 // Like AIS, this is a polled snapshot rather than a push feed: each poll
 // fully replaces the aircraft on the map.
@@ -411,6 +416,19 @@ const FLIGHT_QUERY_POINTS = [
   { lat: 44.65, lon: -63.57, label: 'Halifax' },
   { lat: 62.45, lon: -114.37, label: 'Yellowknife' },
   { lat: 63.75, lon: -68.52, label: 'Iqaluit' },
+  // A 250 nm query radius only reaches ~4.2 deg of latitude from its centre,
+  // so the points above - the northernmost being Iqaluit at 63.75N - never
+  // query anything above about 68N. That left a ~22 deg dead zone between
+  // there and the pole where no request was ever made, regardless of actual
+  // traffic. These points chain northward to close that gap, ending in a
+  // single high point whose radius wraps all longitudes around the pole.
+  { lat: 74.72, lon: -94.97, label: 'Resolute Bay' },
+  { lat: 71.29, lon: -156.76, label: 'Utqiagvik' },
+  { lat: 78.22, lon: 15.63, label: 'Longyearbyen' },
+  { lat: 81.6, lon: -16.7, label: 'Station Nord' },
+  { lat: 82.5, lon: -62.3, label: 'Alert' },
+  { lat: 80.8, lon: 47.66, label: 'Nagurskoye' },
+  { lat: 89, lon: 0, label: 'North Pole' },
 ];
 
 // airplanes.live documents a 1 request/second limit; querying points
